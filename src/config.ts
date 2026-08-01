@@ -3,13 +3,22 @@ import { z } from "zod";
 
 import { ConfigurationError } from "./errors.js";
 
-export interface AppConfig {
+export type McpTransport = "stdio" | "http";
+
+export interface PersonalOsApiConfig {
   baseUrl: URL;
   token: string;
   timeoutMs: number;
 }
 
+export interface AppConfig extends PersonalOsApiConfig {
+  transport: McpTransport;
+  port: number;
+}
+
 const timeoutSchema = z.coerce.number().int().positive().max(300);
+const transportSchema = z.enum(["stdio", "http"]);
+const portSchema = z.coerce.number().int().positive().max(65_535);
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const rawBaseUrl = env.PERSONAL_OS_BASE_URL?.trim();
@@ -41,9 +50,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
+  const parsedTransport = transportSchema.safeParse(env.MCP_TRANSPORT?.trim() || "stdio");
+  if (!parsedTransport.success) {
+    throw new ConfigurationError("MCP_TRANSPORT must be either stdio or http.");
+  }
+
+  const parsedPort = portSchema.safeParse(env.PORT?.trim() || "3000");
+  if (!parsedPort.success) {
+    throw new ConfigurationError("PORT must be an integer between 1 and 65535.");
+  }
+
   return {
     baseUrl,
     token,
     timeoutMs: parsedTimeout.data * 1000,
+    transport: parsedTransport.data,
+    port: parsedPort.data,
   };
 }

@@ -20,6 +20,8 @@ describe("configuration", () => {
     expect(config.baseUrl.toString()).toBe("http://localhost:8080/");
     expect(config.token).toBe("test-ai-token");
     expect(config.timeoutMs).toBe(12_000);
+    expect(config.transport).toBe("stdio");
+    expect(config.port).toBe(3000);
   });
 
   it("rejects a missing base URL", () => {
@@ -49,5 +51,37 @@ describe("configuration", () => {
         PERSONAL_OS_MCP_TIMEOUT_SECONDS: timeout,
       }),
     ).toThrow("PERSONAL_OS_MCP_TIMEOUT_SECONDS");
+  });
+
+  it("loads HTTP transport and Railway port", () => {
+    const config = loadConfig({
+      MCP_TRANSPORT: "http",
+      PORT: "8080",
+      PERSONAL_OS_BASE_URL: "https://personal-os.example.test",
+      PERSONAL_OS_AI_TOKEN: "test-ai-token",
+    });
+
+    expect(config.transport).toBe("http");
+    expect(config.port).toBe(8080);
+  });
+
+  it.each(["sse", "HTTP"])("rejects invalid transport %s", (transport) => {
+    expect(() =>
+      loadConfig({
+        MCP_TRANSPORT: transport,
+        PERSONAL_OS_BASE_URL: "http://localhost:8080",
+        PERSONAL_OS_AI_TOKEN: "test-ai-token",
+      }),
+    ).toThrow("MCP_TRANSPORT");
+  });
+
+  it.each(["0", "-1", "abc", "65536", "1.5"])("rejects invalid port %s", (port) => {
+    expect(() =>
+      loadConfig({
+        PORT: port,
+        PERSONAL_OS_BASE_URL: "http://localhost:8080",
+        PERSONAL_OS_AI_TOKEN: "test-ai-token",
+      }),
+    ).toThrow("PORT");
   });
 });

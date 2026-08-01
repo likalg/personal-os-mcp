@@ -207,7 +207,7 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     "personal_os_list_tasks",
     "List Tasks",
-    "List owned Tasks using only supported filters. Defaults to at most 100; maximum 200.",
+    "List owned Tasks using only supported filters. Defaults to at most 100; maximum 200. Duration filters are total minutes: estimated_minutes for an exact match, min_estimated_minutes/max_estimated_minutes for a range (e.g. 'under 30 minutes' -> max_estimated_minutes: 30; 'one to two hours' -> min_estimated_minutes: 60, max_estimated_minutes: 120).",
     listTasksInput,
     readOnly,
     (input) => ({
@@ -331,7 +331,7 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     "personal_os_create_tag",
     "Create Tag",
-    "Create a normalized owner-scoped Tag. Case/whitespace-equivalent names are duplicates.",
+    "Create a normalized owner-scoped Tag with optional description, emoji, and color. Case/whitespace-equivalent names are duplicates.",
     createTagInput,
     mutation,
     (input) => ({ method: "POST", path: "/api/v1/ai/tags", operation: "create tag", body: input }),
@@ -339,7 +339,7 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     "personal_os_update_tag",
     "Update Tag",
-    "Partially update an owned active Tag.",
+    "Partially update an owned active Tag, including its optional description.",
     updateTagFields.extend({ tag_id: uuid }),
     mutation,
     (input) => ({

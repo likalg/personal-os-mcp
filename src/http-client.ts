@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { AppConfig } from "./config.js";
+import type { PersonalOsApiConfig } from "./config.js";
 import { PersonalOsApiError, redactSensitive, type ErrorKind } from "./errors.js";
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -31,7 +31,7 @@ export class PersonalOsClient {
   private readonly wait: (milliseconds: number) => Promise<void>;
 
   constructor(
-    private readonly config: AppConfig,
+    private readonly config: PersonalOsApiConfig,
     dependencies: ClientDependencies = {},
   ) {
     this.fetcher = dependencies.fetch ?? fetch;

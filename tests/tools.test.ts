@@ -181,6 +181,147 @@ describe("MCP tool registry", () => {
     );
   });
 
+  it("maps estimated_minutes for Task create, update (including clearing), and list filters", async () => {
+    const client = fakeClient();
+    const taskId = "018f7f15-2345-7abc-8def-1234567890ab";
+    const containerId = "018f7f15-2345-7abc-8def-1234567890ac";
+
+    await executeTool(
+      "personal_os_create_task",
+      { container_id: containerId, title: "Deep work block", estimated_minutes: 90 },
+      client,
+    );
+    await executeTool("personal_os_update_task", { task_id: taskId, estimated_minutes: 45 }, client);
+    await executeTool("personal_os_update_task", { task_id: taskId, estimated_minutes: null }, client);
+    await executeTool(
+      "personal_os_list_tasks",
+      { estimated_minutes: 5, min_estimated_minutes: 30, max_estimated_minutes: 60 },
+      client,
+    );
+
+    expect(client.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        method: "POST",
+        path: "/api/v1/ai/tasks",
+        body: expect.objectContaining({ estimated_minutes: 90 }),
+      }),
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        method: "PATCH",
+        path: `/api/v1/ai/tasks/${taskId}`,
+        body: { estimated_minutes: 45 },
+      }),
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        method: "PATCH",
+        path: `/api/v1/ai/tasks/${taskId}`,
+        body: { estimated_minutes: null },
+      }),
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        method: "GET",
+        path: "/api/v1/ai/tasks",
+        query: expect.objectContaining({
+          estimated_minutes: 5,
+          min_estimated_minutes: 30,
+          max_estimated_minutes: 60,
+        }),
+      }),
+    );
+  });
+
+  it("rejects invalid estimated_minutes values and an inverted min/max range before HTTP", async () => {
+    const client = fakeClient();
+    const containerId = "018f7f15-2345-7abc-8def-1234567890ac";
+
+    await expect(
+      executeTool("personal_os_list_tasks", { estimated_minutes: 0 }, client),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    await expect(
+      executeTool("personal_os_list_tasks", { estimated_minutes: -5 }, client),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    await expect(
+      executeTool("personal_os_list_tasks", { estimated_minutes: 10_081 }, client),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    await expect(
+      executeTool("personal_os_list_tasks", { estimated_minutes: 1.5 }, client),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    await expect(
+      executeTool(
+        "personal_os_list_tasks",
+        { min_estimated_minutes: 120, max_estimated_minutes: 60 },
+        client,
+      ),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    await expect(
+      executeTool(
+        "personal_os_create_task",
+        { container_id: containerId, title: "Bad estimate", estimated_minutes: 0 },
+        client,
+      ),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+
+    expect(client.request).not.toHaveBeenCalled();
+  });
+
+  it("accepts and forwards Tag descriptions for create and partial update", async () => {
+    const client = fakeClient();
+    const tagId = "018f7f15-2345-7abc-8def-1234567890ab";
+
+    await executeTool(
+      "personal_os_create_tag",
+      {
+        name: "Personal OS",
+        description: "Tasks and references related to the Personal OS product.",
+      },
+      client,
+    );
+    await executeTool(
+      "personal_os_update_tag",
+      {
+        tag_id: tagId,
+        description: "Updated Tag context.",
+      },
+      client,
+    );
+
+    expect(client.request).toHaveBeenNthCalledWith(1, {
+      method: "POST",
+      path: "/api/v1/ai/tags",
+      operation: "create tag",
+      body: {
+        name: "Personal OS",
+        description: "Tasks and references related to the Personal OS product.",
+      },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, {
+      method: "PATCH",
+      path: `/api/v1/ai/tags/${tagId}`,
+      operation: "update tag",
+      body: { description: "Updated Tag context." },
+    });
+  });
+
+  it("rejects Tag descriptions longer than the Personal OS API limit", async () => {
+    const client = fakeClient();
+
+    await expect(
+      executeTool(
+        "personal_os_create_tag",
+        { name: "Too long", description: "a".repeat(1_001) },
+        client,
+      ),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    expect(client.request).not.toHaveBeenCalled();
+  });
+
   it("maps all resource families and review actions to existing AI routes", async () => {
     const client = fakeClient();
     const id = "018f7f15-2345-7abc-8def-1234567890ab";

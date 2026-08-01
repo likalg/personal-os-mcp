@@ -62,6 +62,15 @@ const taskMutableShape = {
   status: z.enum(taskStatuses),
   priority: z.enum(taskPriorities),
   effort: z.enum(taskEfforts),
+  estimated_minutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(10_080)
+    .nullable()
+    .describe(
+      "Estimated total minutes to complete the Task (1-10080). Always total minutes — never send strings like '1.5 hours' or '1:30'. Null clears the estimate.",
+    ),
   planned_for_date: date.nullable(),
   due_date: date.nullable(),
   due_at: z
@@ -81,10 +90,35 @@ export const listTasksInput = z
     project_id: uuid.optional(),
     container_id: uuid.optional(),
     planned_for_date: date.optional(),
+    estimated_minutes: z.number().int().min(1).max(10_080).optional().describe("Exact total minutes."),
+    min_estimated_minutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(10_080)
+      .optional()
+      .describe("Minimum total minutes (inclusive)."),
+    max_estimated_minutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(10_080)
+      .optional()
+      .describe("Maximum total minutes (inclusive)."),
     search: z.string().max(500).optional(),
     limit: z.number().int().min(1).max(200).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.min_estimated_minutes === undefined
+      || value.max_estimated_minutes === undefined
+      || value.min_estimated_minutes <= value.max_estimated_minutes,
+    {
+      message: "min_estimated_minutes must be <= max_estimated_minutes.",
+      path: ["min_estimated_minutes"],
+    },
+  );
 
 export const createTaskInput = z
   .object({
@@ -94,6 +128,7 @@ export const createTaskInput = z
     status: taskMutableShape.status.optional(),
     priority: taskMutableShape.priority.optional(),
     effort: taskMutableShape.effort.optional(),
+    estimated_minutes: taskMutableShape.estimated_minutes.optional(),
     planned_for_date: taskMutableShape.planned_for_date.optional(),
     due_date: taskMutableShape.due_date.optional(),
     due_at: taskMutableShape.due_at.optional(),
@@ -110,6 +145,7 @@ export const updateTaskFields = z
     status: taskMutableShape.status.optional(),
     priority: taskMutableShape.priority.optional(),
     effort: taskMutableShape.effort.optional(),
+    estimated_minutes: taskMutableShape.estimated_minutes.optional(),
     planned_for_date: taskMutableShape.planned_for_date.optional(),
     due_date: taskMutableShape.due_date.optional(),
     due_at: taskMutableShape.due_at.optional(),
@@ -199,6 +235,7 @@ export const updateCollectionFields = createCollectionInput.partial().strict();
 export const createTagInput = z
   .object({
     name: z.string().min(1).max(120),
+    description: z.string().max(1_000).nullable().optional(),
     emoji: z.string().max(32).nullable().optional(),
     color: z
       .string()

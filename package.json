@@ -13,6 +13,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke:stdio": "node scripts/smoke-stdio.mjs",
+    "smoke:http": "node scripts/smoke-http.mjs",
     "test": "vitest run",
     "lint": "biome lint .",
     "format": "prettier --write .",
