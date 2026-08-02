@@ -82,6 +82,17 @@ const taskMutableShape = {
   tag_ids: z.array(uuid).max(100),
 };
 
+export const paginationFields = {
+  page: z.number().int().min(1).optional().describe("Page number to return."),
+  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (maximum 100)."),
+  fetch_all: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set true only when the user explicitly asks for every matching result. Fetching is safely capped.",
+    ),
+};
+
 export const listTasksInput = z
   .object({
     state: z.enum(taskStates).optional(),
@@ -90,7 +101,13 @@ export const listTasksInput = z
     project_id: uuid.optional(),
     container_id: uuid.optional(),
     planned_for_date: date.optional(),
-    estimated_minutes: z.number().int().min(1).max(10_080).optional().describe("Exact total minutes."),
+    estimated_minutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(10_080)
+      .optional()
+      .describe("Exact total minutes."),
     min_estimated_minutes: z
       .number()
       .int()
@@ -106,14 +123,15 @@ export const listTasksInput = z
       .optional()
       .describe("Maximum total minutes (inclusive)."),
     search: z.string().max(500).optional(),
-    limit: z.number().int().min(1).max(200).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+    ...paginationFields,
   })
   .strict()
   .refine(
     (value) =>
-      value.min_estimated_minutes === undefined
-      || value.max_estimated_minutes === undefined
-      || value.min_estimated_minutes <= value.max_estimated_minutes,
+      value.min_estimated_minutes === undefined ||
+      value.max_estimated_minutes === undefined ||
+      value.min_estimated_minutes <= value.max_estimated_minutes,
     {
       message: "min_estimated_minutes must be <= max_estimated_minutes.",
       path: ["min_estimated_minutes"],

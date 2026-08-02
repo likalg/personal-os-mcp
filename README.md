@@ -158,6 +158,8 @@ Verify locally with `curl http://127.0.0.1:8080/healthz`. For MCP Inspector, run
 
 Task create and update tools accept the optional `estimated_minutes` field: a nullable integer from 1 to 10080 representing the Task's total estimated duration in minutes (never hours/minutes pairs, decimal hours, or time-of-day strings). Send `null` to clear an existing estimate. `personal_os_list_tasks` supports three numeric duration filters: `estimated_minutes` (exact match), `min_estimated_minutes` (inclusive minimum), and `max_estimated_minutes` (inclusive maximum) — map natural-language duration requests to these, e.g. "5-minute tasks" -> `estimated_minutes: 5`, "under 30 minutes" -> `max_estimated_minutes: 30`, "one to two hours" -> `min_estimated_minutes: 60, max_estimated_minutes: 120`.
 
+Paginated Task and unified-item list tools accept `page` and `per_page` (maximum 100). Normal requests return one page and add a concise `pagination` status indicating whether another page exists. Set `fetch_all: true` only when the user explicitly asks for every matching item. The MCP adapter then follows Laravel pagination metadata while preserving the original filters and ordering, stops after at most 10 pages, and reports `truncated: true` plus `next_page` when more results remain. The MCP-only `fetch_all` flag is never forwarded to Personal OS.
+
 ### Tags
 
 - `personal_os_list_tags`

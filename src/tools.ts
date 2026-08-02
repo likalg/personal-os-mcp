@@ -10,6 +10,7 @@ import {
   createTaskInput,
   listPlanningInput,
   listTasksInput,
+  paginationFields,
   reviewActionInput,
   reviewTypes,
   updateCollectionFields,
@@ -207,14 +208,17 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     "personal_os_list_tasks",
     "List Tasks",
-    "List owned Tasks using only supported filters. Defaults to at most 100; maximum 200. Duration filters are total minutes: estimated_minutes for an exact match, min_estimated_minutes/max_estimated_minutes for a range (e.g. 'under 30 minutes' -> max_estimated_minutes: 30; 'one to two hours' -> min_estimated_minutes: 60, max_estimated_minutes: 120).",
+    "List one page of owned Tasks using supported filters. Defaults to 25; page size is capped at 100. Set fetch_all only for an explicit request for every matching Task; aggregation is capped and reports truncation. Duration filters are total minutes: estimated_minutes for an exact match, min_estimated_minutes/max_estimated_minutes for a range (e.g. 'under 30 minutes' -> max_estimated_minutes: 30; 'one to two hours' -> min_estimated_minutes: 60, max_estimated_minutes: 120).",
     listTasksInput,
     readOnly,
     (input) => ({
       method: "GET",
       path: "/api/v1/ai/tasks",
       operation: "list tasks",
-      query: input as Record<string, string | number | boolean | null | undefined>,
+      query: bodyWithout(input, ["fetch_all"]) as Record<
+        string,
+        string | number | boolean | null | undefined
+      >,
     }),
   ),
   tool(
@@ -510,26 +514,32 @@ export const toolDefinitions: ToolDefinition[] = [
     "personal_os_list_inbox_items",
     "List Inbox items",
     "List the bounded mixed Inbox feed of Tasks, Notes, and Checklists.",
-    z.object({ search: z.string().max(200).optional() }).strict(),
+    z.object({ search: z.string().max(200).optional(), ...paginationFields }).strict(),
     readOnly,
     (input) => ({
       method: "GET",
       path: "/api/v1/ai/items",
       operation: "list inbox items",
-      query: { view: "inbox", search: input.search as string | undefined },
+      query: {
+        ...bodyWithout(input, ["fetch_all"]),
+        view: "inbox",
+      } as Record<string, string | number | boolean | null | undefined>,
     }),
   ),
   tool(
     "personal_os_list_archive_items",
     "List archived items",
     "List the bounded mixed Archive feed of Tasks, Notes, and Checklists.",
-    z.object({ search: z.string().max(200).optional() }).strict(),
+    z.object({ search: z.string().max(200).optional(), ...paginationFields }).strict(),
     readOnly,
     (input) => ({
       method: "GET",
       path: "/api/v1/ai/items",
       operation: "list archive items",
-      query: { view: "archived", search: input.search as string | undefined },
+      query: {
+        ...bodyWithout(input, ["fetch_all"]),
+        view: "archived",
+      } as Record<string, string | number | boolean | null | undefined>,
     }),
   ),
   tool(
@@ -540,6 +550,7 @@ export const toolDefinitions: ToolDefinition[] = [
       .object({
         view: z.enum(["today", "tomorrow", "upcoming", "someday"]),
         search: z.string().max(200).optional(),
+        ...paginationFields,
       })
       .strict(),
     readOnly,
@@ -547,10 +558,10 @@ export const toolDefinitions: ToolDefinition[] = [
       method: "GET",
       path: "/api/v1/ai/items",
       operation: "list planning items",
-      query: {
-        view: input.view as string,
-        search: input.search as string | undefined,
-      },
+      query: bodyWithout(input, ["fetch_all"]) as Record<
+        string,
+        string | number | boolean | null | undefined
+      >,
     }),
   ),
 
@@ -697,6 +708,120 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
 ];
 
+const paginatedToolNames = new Set([
+  "personal_os_list_tasks",
+  "personal_os_list_inbox_items",
+  "personal_os_list_archive_items",
+  "personal_os_list_planning_items",
+]);
+const maximumFetchAllPages = 10;
+
+type PaginatedPayload = Record<string, unknown> & {
+  data: unknown[];
+  meta: Record<string, unknown> & {
+    current_page: number;
+    last_page: number;
+  };
+};
+
+function asPaginatedPayload(value: unknown): PaginatedPayload | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const payload = value as Record<string, unknown>;
+  const meta = payload.meta;
+  if (
+    !Array.isArray(payload.data) ||
+    typeof meta !== "object" ||
+    meta === null ||
+    typeof (meta as Record<string, unknown>).current_page !== "number" ||
+    typeof (meta as Record<string, unknown>).last_page !== "number"
+  ) {
+    return null;
+  }
+
+  return payload as PaginatedPayload;
+}
+
+function paginationStatus(
+  mode: "page" | "all",
+  currentPage: number,
+  lastPage: number,
+  pagesFetched: number,
+  metadataAvailable = true,
+): Record<string, unknown> {
+  const hasMore = currentPage < lastPage;
+
+  return {
+    mode,
+    metadata_available: metadataAvailable,
+    has_more: hasMore,
+    truncated: mode === "all" && hasMore,
+    pages_fetched: pagesFetched,
+    next_page: hasMore ? currentPage + 1 : null,
+    maximum_pages: mode === "all" ? maximumFetchAllPages : null,
+  };
+}
+
+function decoratePaginatedResult(result: unknown): unknown {
+  const payload = asPaginatedPayload(result);
+  if (payload === null) {
+    return result;
+  }
+
+  return {
+    ...payload,
+    pagination: paginationStatus("page", payload.meta.current_page, payload.meta.last_page, 1),
+  };
+}
+
+async function collectPaginatedResult(
+  firstResult: unknown,
+  request: ApiRequestOptions<unknown>,
+  client: PersonalOsClient,
+): Promise<unknown> {
+  const firstPage = asPaginatedPayload(firstResult);
+  if (firstPage === null) {
+    if (typeof firstResult === "object" && firstResult !== null) {
+      return {
+        ...firstResult,
+        pagination: paginationStatus("all", 1, 2, 1, false),
+      };
+    }
+
+    return firstResult;
+  }
+
+  const data = [...firstPage.data];
+  let currentPage = firstPage.meta.current_page;
+  let lastPage = firstPage.meta.last_page;
+  let pagesFetched = 1;
+
+  while (currentPage < lastPage && pagesFetched < maximumFetchAllPages) {
+    const requestedPage = currentPage + 1;
+    const nextResult = await client.request({
+      ...request,
+      query: { ...request.query, page: requestedPage },
+    });
+    const nextPage = asPaginatedPayload(nextResult);
+
+    if (nextPage === null || nextPage.meta.current_page < requestedPage) {
+      break;
+    }
+
+    data.push(...nextPage.data);
+    currentPage = nextPage.meta.current_page;
+    lastPage = nextPage.meta.last_page;
+    pagesFetched += 1;
+  }
+
+  return {
+    ...firstPage,
+    data,
+    pagination: paginationStatus("all", currentPage, lastPage, pagesFetched),
+  };
+}
 const definitionsByName = new Map(
   toolDefinitions.map((definition) => [definition.name, definition]),
 );
@@ -735,8 +860,19 @@ export async function executeTool(
   }
 
   try {
-    const result = await client.request(definition.request(parsed.data));
-    return { result };
+    const input = parsed.data as Record<string, unknown>;
+    const request = definition.request(input);
+    const result = await client.request(request);
+
+    if (!paginatedToolNames.has(name)) {
+      return { result };
+    }
+
+    if (input.fetch_all === true) {
+      return { result: await collectPaginatedResult(result, request, client) };
+    }
+
+    return { result: decoratePaginatedResult(result) };
   } catch (error) {
     if (error instanceof PersonalOsApiError) {
       return { error: error.details };
