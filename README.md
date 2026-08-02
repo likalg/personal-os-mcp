@@ -40,7 +40,7 @@ Use the actual account email interactively. The token is displayed once. Store i
 
 ```env
 MCP_TRANSPORT=stdio
-PORT=3000
+PORT=8080
 PERSONAL_OS_BASE_URL=http://localhost:8080
 PERSONAL_OS_AI_TOKEN=replace_with_the_once_displayed_token
 PERSONAL_OS_MCP_TIMEOUT_SECONDS=15
@@ -55,19 +55,20 @@ npm run dev
 npm run typecheck
 npm run build
 npm start
+npm run start:stdio
 npm test
 npm run lint
 npm run format:check
 ```
 
-Development mode runs TypeScript directly. `npm run build` writes ESM output to `dist`; `npm start` runs the built server using `MCP_TRANSPORT`.
+Development mode runs TypeScript directly and respects `MCP_TRANSPORT` from the environment (stdio by default). `npm run build` writes ESM output to `dist`. Once built, `npm start` always runs the HTTP transport (this is what Railway/Docker run) and `npm run start:stdio` always runs the stdio transport (this is what Claude Desktop runs locally), regardless of any `MCP_TRANSPORT` already in the environment — each script sets it explicitly.
 
 ## Local stdio
 
-`stdio` is the default transport and remains suitable for local clients and MCP Inspector:
+`stdio` is the default transport for `npm run dev` and remains suitable for local clients and MCP Inspector. Against a built server:
 
 ```bash
-MCP_TRANSPORT=stdio npm start
+npm run start:stdio
 ```
 
 Inspect the built server with the official MCP Inspector:
@@ -81,16 +82,17 @@ Protocol messages use stdout in this mode. Configuration failures use stderr wit
 
 ## Remote Streamable HTTP
 
-HTTP mode binds to `0.0.0.0`, listens on `PORT`, and exposes:
+HTTP mode binds to `0.0.0.0`, listens on `PORT` (falling back to `8080` if unset), and exposes:
 
 - `POST /mcp` — stateless MCP Streamable HTTP;
-- `GET /health` — process health;
-- `OPTIONS /mcp` and `OPTIONS /health` — CORS preflight.
+- `GET /health` — process health (JSON body);
+- `GET /healthz` — plain-text `OK` probe for the Railway healthcheck. Never calls the Personal OS API, requires no auth, and touches no database or MCP client state;
+- `OPTIONS /mcp`, `OPTIONS /health`, `OPTIONS /healthz` — CORS preflight.
 
 Start it locally:
 
 ```bash
-MCP_TRANSPORT=http PORT=3000 npm start
+PORT=8080 npm start
 ```
 
 The public MCP URL is `https://YOUR_PUBLIC_HOST/mcp`.
@@ -126,9 +128,9 @@ this repo: `php artisan ai:token <email> --name=mcp` (see that app's
 `app/Console/Commands/CreateAiToken.php`). Treat it as a secret — it grants
 the bearer the `ai:access` ability scoped to that one Laravel user's data.
 
-Railway supplies `PORT`; do not hardcode it. The start command is `npm start`, and Railway checks `/health`. No database, persistent volume, OAuth service, or Personal OS deployment is required in this repo — only network access to wherever Personal OS is running.
+Railway supplies `PORT`; do not hardcode it. The container's `Dockerfile` `CMD` runs `node dist/index.js` directly (with `MCP_TRANSPORT=http` baked in as an image default), and Railway checks `/healthz`. `railway.json` intentionally defines no `deploy.startCommand` — one that merely repeats the Dockerfile's own start behavior risks Railway bypassing the image's `CMD` entirely, which is exactly the failure mode to avoid. No database, persistent volume, OAuth service, or Personal OS deployment is required in this repo — only network access to wherever Personal OS is running.
 
-Verify locally with `curl http://127.0.0.1:3000/health`. For MCP Inspector, run `npx @modelcontextprotocol/inspector`, select Streamable HTTP, and use `http://127.0.0.1:3000/mcp`.
+Verify locally with `curl http://127.0.0.1:8080/healthz`. For MCP Inspector, run `npx @modelcontextprotocol/inspector`, select Streamable HTTP, and use `http://127.0.0.1:8080/mcp`.
 
 ## Tools
 

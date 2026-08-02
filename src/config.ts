@@ -55,7 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new ConfigurationError("MCP_TRANSPORT must be either stdio or http.");
   }
 
-  const parsedPort = portSchema.safeParse(env.PORT?.trim() || "3000");
+  const parsedPort = portSchema.safeParse(env.PORT?.trim() || "8080");
   if (!parsedPort.success) {
     throw new ConfigurationError("PORT must be an integer between 1 and 65535.");
   }

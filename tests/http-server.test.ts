@@ -56,6 +56,15 @@ describe("Streamable HTTP transport", () => {
     expect(JSON.stringify(body)).not.toContain(testConfig.token);
   });
 
+  it("serves a Railway-compatible /healthz probe with no API dependency", async () => {
+    const response = await fetch(`${origin}/healthz`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    const body = await response.text();
+    expect(body.trim()).toBe("OK");
+  });
+
   it("supports CORS preflight for remote MCP clients", async () => {
     const response = await fetch(`${origin}/mcp`, {
       method: "OPTIONS",

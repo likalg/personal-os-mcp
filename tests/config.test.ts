@@ -21,7 +21,7 @@ describe("configuration", () => {
     expect(config.token).toBe("test-ai-token");
     expect(config.timeoutMs).toBe(12_000);
     expect(config.transport).toBe("stdio");
-    expect(config.port).toBe(3000);
+    expect(config.port).toBe(8080);
   });
 
   it("rejects a missing base URL", () => {

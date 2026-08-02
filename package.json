@@ -11,7 +11,8 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
+    "start": "MCP_TRANSPORT=http node dist/index.js",
+    "start:stdio": "MCP_TRANSPORT=stdio node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke:stdio": "node scripts/smoke-stdio.mjs",
     "smoke:http": "node scripts/smoke-http.mjs",

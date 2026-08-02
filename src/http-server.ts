@@ -92,6 +92,17 @@ async function routeRequest(
     return;
   }
 
+  if (pathname === "/healthz") {
+    if (method !== "GET") {
+      methodNotAllowed(response, ["GET", "OPTIONS"]);
+      return;
+    }
+
+    response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("OK\n");
+    return;
+  }
+
   if (pathname !== "/mcp") {
     writeJson(response, 404, { error: "Not found." });
     return;
