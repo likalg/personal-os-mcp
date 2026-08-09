@@ -82,6 +82,13 @@ const taskMutableShape = {
   tag_ids: z.array(uuid).max(100),
 };
 
+export const responseDepth = z
+  .enum(["summary", "full"])
+  .optional()
+  .describe(
+    "Response depth. Defaults to summary; request full only when complete item content is required.",
+  );
+
 export const paginationFields = {
   page: z.number().int().min(1).optional().describe("Page number to return."),
   per_page: z.number().int().min(1).max(100).optional().describe("Results per page (maximum 100)."),
@@ -101,6 +108,7 @@ export const listTasksInput = z
     project_id: uuid.optional(),
     container_id: uuid.optional(),
     planned_for_date: date.optional(),
+    detail: responseDepth,
     estimated_minutes: z
       .number()
       .int()

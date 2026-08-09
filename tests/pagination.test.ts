@@ -64,7 +64,12 @@ describe("paginated task-list compatibility", () => {
     expect(client.request).toHaveBeenCalledTimes(1);
     expect(client.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: expect.objectContaining({ search: "roadmap", page: 2, per_page: 25 }),
+        query: expect.objectContaining({
+          search: "roadmap",
+          page: 2,
+          per_page: 25,
+          representation: "summary",
+        }),
       }),
     );
     expect(response).toMatchObject({
@@ -108,6 +113,7 @@ describe("paginated task-list compatibility", () => {
         project_id: projectId,
         search: "roadmap",
         per_page: 25,
+        representation: "summary",
       });
       expect(request.query).not.toHaveProperty("fetch_all");
     }
@@ -170,7 +176,12 @@ describe("paginated task-list compatibility", () => {
     expect(client.request).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        query: expect.objectContaining({ view: "inbox", search: "notes", page: 2 }),
+        query: expect.objectContaining({
+          view: "inbox",
+          search: "notes",
+          page: 2,
+          representation: "summary",
+        }),
       }),
     );
     expect(response).toMatchObject({
@@ -179,5 +190,47 @@ describe("paginated task-list compatibility", () => {
         pagination: { truncated: false, pages_fetched: 2 },
       },
     });
+  });
+
+  it("preserves an explicit full representation across safely fetched pages", async () => {
+    const client = clientWith(async (request) => {
+      const query = request.query as Record<string, unknown>;
+      return page(Number(query.page ?? 1), 2);
+    });
+
+    await executeTool(
+      "personal_os_list_tasks",
+      { detail: "full", search: "deep analysis", fetch_all: true },
+      client,
+    );
+
+    expect(client.request).toHaveBeenCalledTimes(2);
+    for (const [request] of client.request.mock.calls) {
+      expect(request.query).toMatchObject({
+        representation: "full",
+        search: "deep analysis",
+      });
+      expect(request.query).not.toHaveProperty("detail");
+    }
+  });
+
+  it("uses summary for Notes and dedicated endpoints for single-item detail", async () => {
+    const noteId = "018f7f15-2345-7abc-8def-1234567890ab";
+    const client = clientWith(async () => ({ data: [] }));
+
+    await executeTool("personal_os_list_notes", {}, client);
+    await executeTool("personal_os_get_note", { note_id: noteId }, client);
+
+    expect(client.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        path: "/api/v1/ai/notes",
+        query: { representation: "summary" },
+      }),
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ path: `/api/v1/ai/notes/${noteId}` }),
+    );
   });
 });

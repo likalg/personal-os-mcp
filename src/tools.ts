@@ -11,6 +11,7 @@ import {
   listPlanningInput,
   listTasksInput,
   paginationFields,
+  responseDepth,
   reviewActionInput,
   reviewTypes,
   updateCollectionFields,
@@ -70,6 +71,16 @@ function id(input: Record<string, unknown>, key: string): string {
 
 function bodyWithout(input: Record<string, unknown>, keys: string[]): Record<string, unknown> {
   return Object.fromEntries(Object.entries(input).filter(([key]) => !keys.includes(key)));
+}
+function listQuery(
+  input: Record<string, unknown>,
+  fixed: Record<string, unknown> = {},
+): Record<string, string | number | boolean | null | undefined> {
+  return {
+    ...bodyWithout(input, ["fetch_all", "detail"]),
+    ...fixed,
+    representation: (input.detail as "summary" | "full" | undefined) ?? "summary",
+  } as Record<string, string | number | boolean | null | undefined>;
 }
 
 function tool(
@@ -215,10 +226,7 @@ export const toolDefinitions: ToolDefinition[] = [
       method: "GET",
       path: "/api/v1/ai/tasks",
       operation: "list tasks",
-      query: bodyWithout(input, ["fetch_all"]) as Record<
-        string,
-        string | number | boolean | null | undefined
-      >,
+      query: listQuery(input),
     }),
   ),
   tool(
@@ -446,9 +454,14 @@ export const toolDefinitions: ToolDefinition[] = [
     "personal_os_list_notes",
     "List Notes",
     "List active owned plain-text Notes.",
-    empty,
+    z.object({ detail: responseDepth }).strict(),
     readOnly,
-    () => ({ method: "GET", path: "/api/v1/ai/notes", operation: "list notes" }),
+    (input) => ({
+      method: "GET",
+      path: "/api/v1/ai/notes",
+      operation: "list notes",
+      query: listQuery(input),
+    }),
   ),
   tool(
     "personal_os_get_note",
@@ -514,32 +527,38 @@ export const toolDefinitions: ToolDefinition[] = [
     "personal_os_list_inbox_items",
     "List Inbox items",
     "List the bounded mixed Inbox feed of Tasks, Notes, and Checklists.",
-    z.object({ search: z.string().max(200).optional(), ...paginationFields }).strict(),
+    z
+      .object({
+        search: z.string().max(200).optional(),
+        detail: responseDepth,
+        ...paginationFields,
+      })
+      .strict(),
     readOnly,
     (input) => ({
       method: "GET",
       path: "/api/v1/ai/items",
       operation: "list inbox items",
-      query: {
-        ...bodyWithout(input, ["fetch_all"]),
-        view: "inbox",
-      } as Record<string, string | number | boolean | null | undefined>,
+      query: listQuery(input, { view: "inbox" }),
     }),
   ),
   tool(
     "personal_os_list_archive_items",
     "List archived items",
     "List the bounded mixed Archive feed of Tasks, Notes, and Checklists.",
-    z.object({ search: z.string().max(200).optional(), ...paginationFields }).strict(),
+    z
+      .object({
+        search: z.string().max(200).optional(),
+        detail: responseDepth,
+        ...paginationFields,
+      })
+      .strict(),
     readOnly,
     (input) => ({
       method: "GET",
       path: "/api/v1/ai/items",
       operation: "list archive items",
-      query: {
-        ...bodyWithout(input, ["fetch_all"]),
-        view: "archived",
-      } as Record<string, string | number | boolean | null | undefined>,
+      query: listQuery(input, { view: "archived" }),
     }),
   ),
   tool(
@@ -551,6 +570,7 @@ export const toolDefinitions: ToolDefinition[] = [
         view: z.enum(["today", "tomorrow", "upcoming", "someday"]),
         search: z.string().max(200).optional(),
         ...paginationFields,
+        detail: responseDepth,
       })
       .strict(),
     readOnly,
@@ -558,10 +578,7 @@ export const toolDefinitions: ToolDefinition[] = [
       method: "GET",
       path: "/api/v1/ai/items",
       operation: "list planning items",
-      query: bodyWithout(input, ["fetch_all"]) as Record<
-        string,
-        string | number | boolean | null | undefined
-      >,
+      query: listQuery(input),
     }),
   ),
 
