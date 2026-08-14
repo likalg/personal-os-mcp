@@ -21,6 +21,9 @@ const requiredNames = [
   "personal_os_move_task_to_trash",
   "personal_os_restore_task",
   "personal_os_update_task_planning",
+  "personal_os_create_task_step",
+  "personal_os_update_task_step",
+  "personal_os_delete_task_step",
   "personal_os_list_tags",
   "personal_os_get_tag",
   "personal_os_create_tag",
@@ -137,7 +140,7 @@ describe("MCP tool registry", () => {
       { container_id: containerId, title: "Write docs", priority: "p1" },
       client,
     );
-    await executeTool("personal_os_update_task", { task_id: taskId, effort: "deep_focus" }, client);
+    await executeTool("personal_os_update_task", { task_id: taskId, feels_heavy: true }, client);
     await executeTool(
       "personal_os_bulk_update_tasks",
       { tasks: [{ id: taskId, status: "next" }] },
@@ -160,7 +163,7 @@ describe("MCP tool registry", () => {
       expect.objectContaining({
         method: "PATCH",
         path: `/api/v1/ai/tasks/${taskId}`,
-        body: { effort: "deep_focus" },
+        body: { feels_heavy: true },
       }),
     );
     expect(client.request).toHaveBeenNthCalledWith(
@@ -181,6 +184,79 @@ describe("MCP tool registry", () => {
     );
   });
 
+  it("hides Effort from exposed Task inputs while retaining current state and Feels Heavy controls", async () => {
+    const client = fakeClient();
+    const taskId = "018f7f15-2345-7abc-8def-1234567890ab";
+    const containerId = "018f7f15-2345-7abc-8def-1234567890ac";
+
+    await expect(
+      executeTool(
+        "personal_os_create_task",
+        { container_id: containerId, title: "Hidden option", effort: "deep_focus" },
+        client,
+      ),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    await expect(
+      executeTool("personal_os_update_task", { task_id: taskId, effort: "deep_focus" }, client),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+
+    await executeTool(
+      "personal_os_update_task",
+      { task_id: taskId, work_state: "in_progress", feels_heavy: true },
+      client,
+    );
+    expect(client.request).toHaveBeenCalledOnce();
+  });
+
+  it("maps current Task filters, sorting, and Step operations directly to AI API routes", async () => {
+    const client = fakeClient();
+    const taskId = "018f7f15-2345-7abc-8def-1234567890ab";
+    const stepId = "018f7f15-2345-7abc-8def-1234567890ad";
+
+    await executeTool(
+      "personal_os_list_tasks",
+      { work_state: "in_progress", feels_heavy: true, priority: "p1", sort: "priority" },
+      client,
+    );
+    await executeTool(
+      "personal_os_create_task_step",
+      { task_id: taskId, title: "Open the form" },
+      client,
+    );
+    await executeTool("personal_os_update_task_step", { step_id: stepId, is_done: true }, client);
+    await executeTool("personal_os_delete_task_step", { step_id: stepId }, client);
+
+    expect(client.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        method: "GET",
+        path: "/api/v1/ai/tasks",
+        query: expect.objectContaining({
+          work_state: "in_progress",
+          feels_heavy: true,
+          priority: "p1",
+          sort: "priority",
+        }),
+      }),
+    );
+    expect(client.request).toHaveBeenNthCalledWith(2, {
+      method: "POST",
+      path: `/api/v1/ai/tasks/${taskId}/steps`,
+      operation: "create task step",
+      body: { title: "Open the form" },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(3, {
+      method: "PATCH",
+      path: `/api/v1/ai/task-steps/${stepId}`,
+      operation: "update task step",
+      body: { is_done: true },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ method: "DELETE", path: `/api/v1/ai/task-steps/${stepId}` }),
+    );
+  });
+
   it("maps estimated_minutes for Task create, update (including clearing), and list filters", async () => {
     const client = fakeClient();
     const taskId = "018f7f15-2345-7abc-8def-1234567890ab";
@@ -191,8 +267,16 @@ describe("MCP tool registry", () => {
       { container_id: containerId, title: "Deep work block", estimated_minutes: 90 },
       client,
     );
-    await executeTool("personal_os_update_task", { task_id: taskId, estimated_minutes: 45 }, client);
-    await executeTool("personal_os_update_task", { task_id: taskId, estimated_minutes: null }, client);
+    await executeTool(
+      "personal_os_update_task",
+      { task_id: taskId, estimated_minutes: 45 },
+      client,
+    );
+    await executeTool(
+      "personal_os_update_task",
+      { task_id: taskId, estimated_minutes: null },
+      client,
+    );
     await executeTool(
       "personal_os_list_tasks",
       { estimated_minutes: 5, min_estimated_minutes: 30, max_estimated_minutes: 60 },
@@ -367,6 +451,7 @@ describe("MCP tool registry", () => {
         "personal_os_delete_project",
         "personal_os_delete_collection",
         "personal_os_delete_note",
+        "personal_os_delete_task_step",
         "personal_os_abandon_review",
       ]),
     );

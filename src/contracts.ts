@@ -15,6 +15,8 @@ export const taskStatuses = [
   "cancelled",
 ] as const;
 export const taskPriorities = ["none", "p1", "p2", "p3", "p4"] as const;
+export const taskWorkStates = ["idle", "in_progress", "later"] as const;
+export const taskSorts = ["newest", "priority"] as const;
 export const taskEfforts = ["quick_win", "deep_focus", "low_energy", "high_physical"] as const;
 export const containerTypes = [
   "inbox",
@@ -60,7 +62,14 @@ const taskMutableShape = {
   title: z.string().min(1).max(500),
   description: z.string().max(60_000).nullable(),
   status: z.enum(taskStatuses),
+  work_state: z.enum(taskWorkStates),
+  feels_heavy: z.boolean(),
+  feels_heavy_focus_started_at: z.string().min(1).nullable(),
+  feels_heavy_gain_note: z.string().max(2_000).nullable(),
+  feels_heavy_self_message: z.string().max(2_000).nullable(),
+  steps_finalized: z.boolean(),
   priority: z.enum(taskPriorities),
+  // Temporarily hidden from UI; keep implementation for future re-enable.
   effort: z.enum(taskEfforts),
   estimated_minutes: z
     .number()
@@ -104,6 +113,9 @@ export const listTasksInput = z
   .object({
     state: z.enum(taskStates).optional(),
     status: z.enum(taskStatuses).optional(),
+    work_state: z.enum(taskWorkStates).optional(),
+    feels_heavy: z.boolean().optional(),
+    priority: z.enum(taskPriorities).optional(),
     tag_id: uuid.optional(),
     project_id: uuid.optional(),
     container_id: uuid.optional(),
@@ -131,6 +143,7 @@ export const listTasksInput = z
       .optional()
       .describe("Maximum total minutes (inclusive)."),
     search: z.string().max(500).optional(),
+    sort: z.enum(taskSorts).optional(),
     limit: z.number().int().min(1).max(100).optional(),
     ...paginationFields,
   })
@@ -152,8 +165,9 @@ export const createTaskInput = z
     title: taskMutableShape.title,
     description: taskMutableShape.description.optional(),
     status: taskMutableShape.status.optional(),
+    work_state: taskMutableShape.work_state.optional(),
+    feels_heavy: taskMutableShape.feels_heavy.optional(),
     priority: taskMutableShape.priority.optional(),
-    effort: taskMutableShape.effort.optional(),
     estimated_minutes: taskMutableShape.estimated_minutes.optional(),
     planned_for_date: taskMutableShape.planned_for_date.optional(),
     due_date: taskMutableShape.due_date.optional(),
@@ -169,8 +183,13 @@ export const updateTaskFields = z
     title: taskMutableShape.title.optional(),
     description: taskMutableShape.description.optional(),
     status: taskMutableShape.status.optional(),
+    work_state: taskMutableShape.work_state.optional(),
+    feels_heavy: taskMutableShape.feels_heavy.optional(),
+    feels_heavy_focus_started_at: taskMutableShape.feels_heavy_focus_started_at.optional(),
+    feels_heavy_gain_note: taskMutableShape.feels_heavy_gain_note.optional(),
+    feels_heavy_self_message: taskMutableShape.feels_heavy_self_message.optional(),
+    steps_finalized: taskMutableShape.steps_finalized.optional(),
     priority: taskMutableShape.priority.optional(),
-    effort: taskMutableShape.effort.optional(),
     estimated_minutes: taskMutableShape.estimated_minutes.optional(),
     planned_for_date: taskMutableShape.planned_for_date.optional(),
     due_date: taskMutableShape.due_date.optional(),
@@ -179,6 +198,24 @@ export const updateTaskFields = z
     tag_ids: taskMutableShape.tag_ids.optional(),
   })
   .strict();
+
+export const createTaskStepInput = z
+  .object({
+    task_id: uuid,
+    title: z.string().min(1).max(500),
+  })
+  .strict();
+
+export const updateTaskStepInput = z
+  .object({
+    step_id: uuid,
+    title: z.string().min(1).max(500).optional(),
+    is_done: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => value.title !== undefined || value.is_done !== undefined, {
+    message: "At least one Step field is required.",
+  });
 
 export const bulkUpdateTasksInput = z
   .object({

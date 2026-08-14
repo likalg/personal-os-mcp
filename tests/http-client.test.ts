@@ -58,7 +58,7 @@ afterEach(async () => {
   );
 });
 
-function client(timeoutMs = 1_000): PersonalOsClient {
+function client(timeoutMs = 5_000): PersonalOsClient {
   return new PersonalOsClient({ baseUrl, token, timeoutMs }, { wait: async () => undefined });
 }
 

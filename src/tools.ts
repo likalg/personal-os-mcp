@@ -7,6 +7,7 @@ import {
   createNoteInput,
   createProjectInput,
   createTagInput,
+  createTaskStepInput,
   createTaskInput,
   listPlanningInput,
   listTasksInput,
@@ -20,6 +21,7 @@ import {
   updatePlanningInput,
   updateProjectFields,
   updateTagFields,
+  updateTaskStepInput,
   updateTaskFields,
   uuid,
 } from "./contracts.js";
@@ -219,7 +221,7 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     "personal_os_list_tasks",
     "List Tasks",
-    "List one page of owned Tasks using supported filters. Defaults to 25; page size is capped at 100. Set fetch_all only for an explicit request for every matching Task; aggregation is capped and reports truncation. Duration filters are total minutes: estimated_minutes for an exact match, min_estimated_minutes/max_estimated_minutes for a range (e.g. 'under 30 minutes' -> max_estimated_minutes: 30; 'one to two hours' -> min_estimated_minutes: 60, max_estimated_minutes: 120).",
+    "List one page of owned Tasks using current state, Feels Heavy, priority, duration, Container, Tag, planning, search, and sort filters. Default ordering is newest first; sort=priority groups p1-p4 before No Priority and keeps newest first within each group. Defaults to 25; page size is capped at 100. Set fetch_all only for an explicit request for every matching Task; aggregation is capped and reports truncation. Duration filters are total minutes: estimated_minutes for an exact match, min_estimated_minutes/max_estimated_minutes for a range (e.g. 'under 30 minutes' -> max_estimated_minutes: 30; 'one to two hours' -> min_estimated_minutes: 60, max_estimated_minutes: 120).",
     listTasksInput,
     readOnly,
     (input) => ({
@@ -244,7 +246,7 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     "personal_os_create_task",
     "Create Task",
-    "Create one Task in an owned active non-Area Container, optionally replacing its complete Tag set.",
+    "Create one Task in an owned active non-Area Container, optionally setting work state, Feels Heavy, and its complete Tag set.",
     createTaskInput,
     mutation,
     (input) => ({
@@ -257,7 +259,7 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     "personal_os_update_task",
     "Update Task",
-    "Partially update one owned active Task. Only supplied fields change; tag_ids replaces the complete Tag set.",
+    "Partially update one owned active Task, including work state, Feels Heavy support fields, and Steps finalization. Only supplied fields change; tag_ids replaces the complete Tag set.",
     updateTaskFields.extend({ task_id: uuid }),
     mutation,
     (input) => ({
@@ -317,6 +319,45 @@ export const toolDefinitions: ToolDefinition[] = [
       path: `/api/v1/ai/tasks/${id(input, "task_id")}/planning`,
       operation: "update task planning",
       body: bodyWithout(input, ["task_id"]),
+    }),
+  ),
+
+  tool(
+    "personal_os_create_task_step",
+    "Create Task Step",
+    "Create one ordered Step on an owned Task. Steps never complete their parent Task automatically.",
+    createTaskStepInput,
+    mutation,
+    (input) => ({
+      method: "POST",
+      path: `/api/v1/ai/tasks/${id(input, "task_id")}/steps`,
+      operation: "create task step",
+      body: bodyWithout(input, ["task_id"]),
+    }),
+  ),
+  tool(
+    "personal_os_update_task_step",
+    "Update Task Step",
+    "Partially update a Task Step title or completion state. Step completion never completes the parent Task.",
+    updateTaskStepInput,
+    mutation,
+    (input) => ({
+      method: "PATCH",
+      path: `/api/v1/ai/task-steps/${id(input, "step_id")}`,
+      operation: "update task step",
+      body: bodyWithout(input, ["step_id"]),
+    }),
+  ),
+  tool(
+    "personal_os_delete_task_step",
+    "Delete Task Step",
+    "CONFIRMATION REQUIRED. Permanently delete this Step without deleting or completing its parent Task.",
+    identifier("step_id"),
+    finalDelete,
+    (input) => ({
+      method: "DELETE",
+      path: `/api/v1/ai/task-steps/${id(input, "step_id")}`,
+      operation: "delete task step",
     }),
   ),
 

@@ -8,6 +8,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { AppConfig } from "../src/config.js";
 import { PersonalOsClient } from "../src/http-client.js";
 import { startHttpServer } from "../src/http-server.js";
+import { toolDefinitions } from "../src/tools.js";
 
 const testConfig: AppConfig = {
   baseUrl: new URL("http://personal-os.example.test"),
@@ -91,7 +92,7 @@ describe("Streamable HTTP transport", () => {
       await client.connect(transport as Transport);
       const result = await client.listTools();
 
-      expect(result.tools).toHaveLength(66);
+      expect(result.tools).toHaveLength(toolDefinitions.length);
       expect(result.tools.map(({ name }) => name)).toContain("personal_os_health");
       expect(result.tools.map(({ name }) => name)).toContain("personal_os_get_review_summary");
     } finally {

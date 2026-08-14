@@ -146,7 +146,9 @@ async function handleMcpRequest(
     await transport.handleRequest(request, response);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`personal-os-mcp: unhandled error in /mcp request: ${redactSensitive(message, "")}\n`);
+    process.stderr.write(
+      `personal-os-mcp: unhandled error in /mcp request: ${redactSensitive(message, "")}\n`,
+    );
     if (!response.headersSent) {
       writeJson(response, 500, {
         jsonrpc: "2.0",
