@@ -436,6 +436,32 @@ describe("MCP tool registry", () => {
     ]);
   });
 
+  it("forwards the shared Note Tag set for create and update", async () => {
+    const client = fakeClient();
+    const noteId = "018f7f15-2345-7abc-8def-1234567890ab";
+    const tagId = "018f7f15-2345-7abc-8def-1234567890ac";
+
+    await executeTool(
+      "personal_os_create_note",
+      { body: "Tagged reference", tag_ids: [tagId] },
+      client,
+    );
+    await executeTool("personal_os_update_note", { note_id: noteId, tag_ids: [] }, client);
+
+    expect(client.request).toHaveBeenNthCalledWith(1, {
+      method: "POST",
+      path: "/api/v1/ai/notes",
+      operation: "create note",
+      body: { body: "Tagged reference", tag_ids: [tagId] },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, {
+      method: "PATCH",
+      path: `/api/v1/ai/notes/${noteId}`,
+      operation: "update note",
+      body: { tag_ids: [] },
+    });
+  });
+
   it("marks final delete, bulk, Trash, archive, and review abandon as destructive", () => {
     const destructive = toolDefinitions
       .filter(({ annotations }) => annotations.destructiveHint)
