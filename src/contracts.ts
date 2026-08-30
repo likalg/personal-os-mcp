@@ -17,7 +17,6 @@ export const taskStatuses = [
 export const taskPriorities = ["none", "p1", "p2", "p3", "p4"] as const;
 export const taskWorkStates = ["idle", "in_progress", "later"] as const;
 export const taskSorts = ["newest", "priority"] as const;
-export const taskEfforts = ["quick_win", "deep_focus", "low_energy", "high_physical"] as const;
 export const containerTypes = [
   "inbox",
   "area",
@@ -69,8 +68,6 @@ const taskMutableShape = {
   feels_heavy_self_message: z.string().max(2_000).nullable(),
   steps_finalized: z.boolean(),
   priority: z.enum(taskPriorities),
-  // Temporarily hidden from UI; keep implementation for future re-enable.
-  effort: z.enum(taskEfforts),
   estimated_minutes: z
     .number()
     .int()
