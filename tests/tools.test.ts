@@ -21,6 +21,10 @@ const requiredNames = [
   "personal_os_move_task_to_trash",
   "personal_os_restore_task",
   "personal_os_update_task_planning",
+  "personal_os_list_task_reminders",
+  "personal_os_create_task_reminder",
+  "personal_os_update_reminder",
+  "personal_os_cancel_reminder",
   "personal_os_create_task_step",
   "personal_os_update_task_step",
   "personal_os_delete_task_step",
@@ -257,6 +261,70 @@ describe("MCP tool registry", () => {
     );
   });
 
+  it("maps reminder list, create, update, and cancel directly to AI API routes", async () => {
+    const client = fakeClient();
+    const taskId = "018f7f15-2345-7abc-8def-1234567890ab";
+    const reminderId = "018f7f15-2345-7abc-8def-1234567890ad";
+
+    await executeTool("personal_os_list_task_reminders", { task_id: taskId }, client);
+    await executeTool(
+      "personal_os_create_task_reminder",
+      { task_id: taskId, remind_at: "2026-09-08 09:30" },
+      client,
+    );
+    await executeTool(
+      "personal_os_update_reminder",
+      { reminder_id: reminderId, remind_at: "2026-09-08 10:45:30" },
+      client,
+    );
+    await executeTool("personal_os_cancel_reminder", { reminder_id: reminderId }, client);
+
+    expect(client.request).toHaveBeenNthCalledWith(1, {
+      method: "GET",
+      path: `/api/v1/ai/tasks/${taskId}/reminders`,
+      operation: "list task reminders",
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, {
+      method: "POST",
+      path: `/api/v1/ai/tasks/${taskId}/reminders`,
+      operation: "create task reminder",
+      body: { remind_at: "2026-09-08 09:30" },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(3, {
+      method: "PATCH",
+      path: `/api/v1/ai/reminders/${reminderId}`,
+      operation: "update reminder",
+      body: { remind_at: "2026-09-08 10:45:30" },
+    });
+    expect(client.request).toHaveBeenNthCalledWith(4, {
+      method: "DELETE",
+      path: `/api/v1/ai/reminders/${reminderId}`,
+      operation: "cancel reminder",
+    });
+  });
+
+  it("rejects invalid reminder identifiers and non-local date-time formats before HTTP", async () => {
+    const client = fakeClient();
+    const taskId = "018f7f15-2345-7abc-8def-1234567890ab";
+
+    await expect(
+      executeTool(
+        "personal_os_create_task_reminder",
+        { task_id: taskId, remind_at: "2026-09-08T09:30:00Z" },
+        client,
+      ),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+    await expect(
+      executeTool(
+        "personal_os_update_reminder",
+        { reminder_id: "not-a-uuid", remind_at: "2026-09-08 09:30" },
+        client,
+      ),
+    ).resolves.toMatchObject({ error: { type: "invalid_arguments" } });
+
+    expect(client.request).not.toHaveBeenCalled();
+  });
+
   it("maps estimated_minutes for Task create, update (including clearing), and list filters", async () => {
     const client = fakeClient();
     const taskId = "018f7f15-2345-7abc-8def-1234567890ab";
@@ -478,6 +546,7 @@ describe("MCP tool registry", () => {
         "personal_os_delete_collection",
         "personal_os_delete_note",
         "personal_os_delete_task_step",
+        "personal_os_cancel_reminder",
         "personal_os_abandon_review",
       ]),
     );

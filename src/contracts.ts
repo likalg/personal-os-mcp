@@ -5,6 +5,13 @@ export const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD
 export const time = z
   .string()
   .regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/, "Expected H:i or H:i:s.");
+export const reminderLocalDateTime = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}-\d{2} (?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/,
+    "Expected YYYY-MM-DD HH:mm or YYYY-MM-DD HH:mm:ss.",
+  )
+  .describe("Future local wall time in the Personal OS User timezone.");
 
 export const taskStatuses = [
   "inbox",
@@ -245,6 +252,20 @@ export const updatePlanningInput = z
     message: "scheduled_date is required when timeline is scheduled.",
     path: ["scheduled_date"],
   });
+
+export const createTaskReminderInput = z
+  .object({
+    task_id: uuid,
+    remind_at: reminderLocalDateTime,
+  })
+  .strict();
+
+export const updateReminderInput = z
+  .object({
+    reminder_id: uuid,
+    remind_at: reminderLocalDateTime,
+  })
+  .strict();
 
 export const listPlanningInput = z
   .object({

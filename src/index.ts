@@ -14,7 +14,6 @@ const HEALTHCHECK_PATH = "/healthz";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const client = new PersonalOsClient(config);
 
   if (config.transport === "http") {
     // Logged before binding so the process's very first output proves this
@@ -25,9 +24,20 @@ async function main(): Promise<void> {
     process.stdout.write("Transport mode: streamable-http\n");
     process.stdout.write(`MCP endpoint path: ${MCP_PATH}\n`);
     process.stdout.write(`Healthcheck path: ${HEALTHCHECK_PATH}\n`);
+    if (!config.publicUrl || !config.authorizationServerUrl) {
+      throw new ConfigurationError("HTTP OAuth URLs are not configured.");
+    }
+
     process.stdout.write(`Personal OS API base URL: ${config.baseUrl.toString()}\n`);
 
-    const httpServer = await startHttpServer(client, { host: HTTP_HOST, port: config.port });
+    const httpServer = await startHttpServer(
+      {
+        ...config,
+        publicUrl: config.publicUrl,
+        authorizationServerUrl: config.authorizationServerUrl,
+      },
+      { host: HTTP_HOST, port: config.port },
+    );
     process.stdout.write(`Personal OS MCP HTTP server listening on ${HTTP_HOST}:${config.port}\n`);
 
     const shutdown = (signal: NodeJS.Signals): void => {
@@ -45,6 +55,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (!config.token) {
+    throw new ConfigurationError("PERSONAL_OS_AI_TOKEN is required for stdio transport.");
+  }
+
+  const client = new PersonalOsClient({ ...config, token: config.token });
   const server = createServer(client);
   await server.connect(new StdioServerTransport());
 }

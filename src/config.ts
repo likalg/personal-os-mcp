@@ -11,8 +11,11 @@ export interface PersonalOsApiConfig {
   timeoutMs: number;
 }
 
-export interface AppConfig extends PersonalOsApiConfig {
+export interface AppConfig extends Omit<PersonalOsApiConfig, "token"> {
+  token?: string;
   transport: McpTransport;
+  publicUrl?: URL;
+  authorizationServerUrl?: URL;
   port: number;
 }
 
@@ -26,10 +29,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   if (!rawBaseUrl) {
     throw new ConfigurationError("PERSONAL_OS_BASE_URL is required.");
-  }
-
-  if (!token) {
-    throw new ConfigurationError("PERSONAL_OS_AI_TOKEN is required.");
   }
 
   let baseUrl: URL;
@@ -49,10 +48,32 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       "PERSONAL_OS_MCP_TIMEOUT_SECONDS must be an integer between 1 and 300.",
     );
   }
-
   const parsedTransport = transportSchema.safeParse(env.MCP_TRANSPORT?.trim() || "stdio");
   if (!parsedTransport.success) {
     throw new ConfigurationError("MCP_TRANSPORT must be either stdio or http.");
+  }
+  if (parsedTransport.data === "stdio" && !token) {
+    throw new ConfigurationError("PERSONAL_OS_AI_TOKEN is required for stdio transport.");
+  }
+  let authorizationServerUrl: URL | undefined;
+  let publicUrl: URL | undefined;
+  if (parsedTransport.data === "http") {
+    try {
+      publicUrl = new URL(env.MCP_PUBLIC_URL?.trim() || "");
+    } catch {
+      throw new ConfigurationError(
+        "MCP_PUBLIC_URL is required in HTTP mode and must be a valid URL.",
+      );
+    }
+    if (!["http:", "https:"].includes(publicUrl.protocol) || publicUrl.pathname !== "/mcp") {
+      throw new ConfigurationError("MCP_PUBLIC_URL must be an HTTP(S) URL ending in /mcp.");
+    }
+
+    try {
+      authorizationServerUrl = new URL(env.PERSONAL_OS_OAUTH_ISSUER_URL?.trim() || baseUrl.origin);
+    } catch {
+      throw new ConfigurationError("PERSONAL_OS_OAUTH_ISSUER_URL must be a valid URL.");
+    }
   }
 
   const parsedPort = portSchema.safeParse(env.PORT?.trim() || "8080");
@@ -62,9 +83,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   return {
     baseUrl,
-    token,
+    ...(token ? { token } : {}),
     timeoutMs: parsedTimeout.data * 1000,
     transport: parsedTransport.data,
     port: parsedPort.data,
+    ...(publicUrl ? { publicUrl } : {}),
+    ...(authorizationServerUrl ? { authorizationServerUrl } : {}),
   };
 }

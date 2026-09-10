@@ -56,13 +56,16 @@ describe("configuration", () => {
   it("loads HTTP transport and Railway port", () => {
     const config = loadConfig({
       MCP_TRANSPORT: "http",
+      MCP_PUBLIC_URL: "https://mcp.example.test/mcp",
       PORT: "8080",
       PERSONAL_OS_BASE_URL: "https://personal-os.example.test",
-      PERSONAL_OS_AI_TOKEN: "test-ai-token",
     });
 
     expect(config.transport).toBe("http");
     expect(config.port).toBe(8080);
+    expect(config.token).toBeUndefined();
+    expect(config.publicUrl?.toString()).toBe("https://mcp.example.test/mcp");
+    expect(config.authorizationServerUrl?.toString()).toBe("https://personal-os.example.test/");
   });
 
   it.each(["sse", "HTTP"])("rejects invalid transport %s", (transport) => {

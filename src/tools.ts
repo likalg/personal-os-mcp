@@ -6,6 +6,7 @@ import {
   createContainerInput,
   createNoteInput,
   createProjectInput,
+  createTaskReminderInput,
   createTagInput,
   createTaskStepInput,
   createTaskInput,
@@ -19,6 +20,7 @@ import {
   updateContainerFields,
   updateNoteFields,
   updatePlanningInput,
+  updateReminderInput,
   updateProjectFields,
   updateTagFields,
   updateTaskStepInput,
@@ -65,6 +67,10 @@ const reversibleDestructive: ToolAnnotations = {
 const finalDelete: ToolAnnotations = {
   ...reversibleDestructive,
   idempotentHint: false,
+};
+const cancellation: ToolAnnotations = {
+  ...reversibleDestructive,
+  idempotentHint: true,
 };
 
 function id(input: Record<string, unknown>, key: string): string {
@@ -319,6 +325,57 @@ export const toolDefinitions: ToolDefinition[] = [
       path: `/api/v1/ai/tasks/${id(input, "task_id")}/planning`,
       operation: "update task planning",
       body: bodyWithout(input, ["task_id"]),
+    }),
+  ),
+
+  tool(
+    "personal_os_list_task_reminders",
+    "List Task reminders",
+    "List every reminder for one owned Task in chronological order, including pending, triggered, failed, and cancelled statuses.",
+    identifier("task_id"),
+    readOnly,
+    (input) => ({
+      method: "GET",
+      path: `/api/v1/ai/tasks/${id(input, "task_id")}/reminders`,
+      operation: "list task reminders",
+    }),
+  ),
+  tool(
+    "personal_os_create_task_reminder",
+    "Create Task reminder",
+    "Create an additional reminder for an active owned Task. remind_at is a future local wall time in the Personal OS User timezone.",
+    createTaskReminderInput,
+    mutation,
+    (input) => ({
+      method: "POST",
+      path: `/api/v1/ai/tasks/${id(input, "task_id")}/reminders`,
+      operation: "create task reminder",
+      body: bodyWithout(input, ["task_id"]),
+    }),
+  ),
+  tool(
+    "personal_os_update_reminder",
+    "Update reminder",
+    "Reschedule one owned pending reminder. remind_at is a future local wall time in the Personal OS User timezone.",
+    updateReminderInput,
+    mutation,
+    (input) => ({
+      method: "PATCH",
+      path: `/api/v1/ai/reminders/${id(input, "reminder_id")}`,
+      operation: "update reminder",
+      body: bodyWithout(input, ["reminder_id"]),
+    }),
+  ),
+  tool(
+    "personal_os_cancel_reminder",
+    "Cancel reminder",
+    "CONFIRMATION REQUIRED. Cancel one owned pending reminder without deleting its history. Repeating the same cancellation is safe.",
+    identifier("reminder_id"),
+    cancellation,
+    (input) => ({
+      method: "DELETE",
+      path: `/api/v1/ai/reminders/${id(input, "reminder_id")}`,
+      operation: "cancel reminder",
     }),
   ),
 

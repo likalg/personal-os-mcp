@@ -15,16 +15,25 @@ if (!globalThis.crypto) {
   globalThis.crypto = webcrypto as Crypto;
 }
 
-import { redactSensitive } from "./errors.js";
-import type { PersonalOsClient } from "./http-client.js";
+import { PersonalOsApiError, redactSensitive } from "./errors.js";
+import type { AppConfig, PersonalOsApiConfig } from "./config.js";
+import { PersonalOsClient, type ClientDependencies } from "./http-client.js";
 import { createServer as createMcpServer } from "./server.js";
+
+type HttpServerConfig = Omit<PersonalOsApiConfig, "token"> &
+  Required<Pick<AppConfig, "publicUrl" | "authorizationServerUrl">>;
+
+const protectedResourcePaths = new Set([
+  "/.well-known/oauth-protected-resource",
+  "/.well-known/oauth-protected-resource/mcp",
+]);
 
 const corsHeaders = {
   "Access-Control-Allow-Headers":
     "Accept, Authorization, Content-Type, Last-Event-ID, Mcp-Session-Id, MCP-Protocol-Version",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Expose-Headers": "Mcp-Session-Id",
+  "Access-Control-Expose-Headers": "Mcp-Session-Id, WWW-Authenticate",
   "Access-Control-Max-Age": "86400",
 } as const;
 
@@ -33,18 +42,22 @@ interface StartHttpServerOptions {
   port: number;
 }
 
-export function createHttpServer(client: PersonalOsClient): Server {
+export function createHttpServer(
+  config: HttpServerConfig,
+  dependencies: ClientDependencies = {},
+): Server {
   return createNodeServer((request, response) => {
     applyCors(response);
-    void routeRequest(request, response, client);
+    void routeRequest(request, response, config, dependencies);
   });
 }
 
 export async function startHttpServer(
-  client: PersonalOsClient,
+  config: HttpServerConfig,
   { host = "0.0.0.0", port }: StartHttpServerOptions,
+  dependencies: ClientDependencies = {},
 ): Promise<Server> {
-  const server = createHttpServer(client);
+  const server = createHttpServer(config, dependencies);
 
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error): void => {
@@ -67,7 +80,8 @@ export async function startHttpServer(
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  client: PersonalOsClient,
+  config: HttpServerConfig,
+  dependencies: ClientDependencies,
 ): Promise<void> {
   const method = request.method ?? "GET";
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
@@ -97,12 +111,25 @@ async function routeRequest(
       methodNotAllowed(response, ["GET", "OPTIONS"]);
       return;
     }
-
     response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("OK\n");
     return;
   }
 
+  if (protectedResourcePaths.has(pathname)) {
+    if (method !== "GET") {
+      methodNotAllowed(response, ["GET", "OPTIONS"]);
+      return;
+    }
+    writeJson(response, 200, {
+      resource: config.publicUrl.toString(),
+      authorization_servers: [config.authorizationServerUrl.toString().replace(/\/$/, "")],
+      scopes_supported: ["personal_os", "offline_access"],
+      bearer_methods_supported: ["header"],
+      resource_name: "Personal OS",
+    });
+    return;
+  }
   if (pathname !== "/mcp") {
     writeJson(response, 404, { error: "Not found." });
     return;
@@ -113,7 +140,36 @@ async function routeRequest(
     return;
   }
 
-  await handleMcpRequest(request, response, client);
+  const authorization = request.headers.authorization;
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim();
+
+  if (!token) {
+    unauthorized(response, resourceMetadataUrl(config));
+    return;
+  }
+
+  const requestClient = new PersonalOsClient({ ...config, token }, dependencies);
+  try {
+    await requestClient.request({
+      method: "GET",
+      path: "/api/v1/ai/mcp-health",
+      query: { resource: config.publicUrl.toString() },
+      operation: "authenticate MCP request",
+    });
+  } catch (error) {
+    if (
+      error instanceof PersonalOsApiError &&
+      ["authentication", "authorization"].includes(error.details.type)
+    ) {
+      unauthorized(response, resourceMetadataUrl(config), "invalid_token");
+      return;
+    }
+    serviceUnavailable(response);
+    return;
+  }
+
+  await handleMcpRequest(request, response, requestClient);
 }
 
 async function handleMcpRequest(
@@ -192,4 +248,39 @@ function methodNotAllowed(response: ServerResponse, allowed: string[], jsonRpc =
 function writeJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(body));
+}
+
+function unauthorized(response: ServerResponse, metadataUrl: string, error?: string): void {
+  const suffix = error ? `, error="${error}"` : "";
+  response.setHeader(
+    "WWW-Authenticate",
+    `Bearer resource_metadata="${metadataUrl}", scope="personal_os offline_access"${suffix}`,
+  );
+
+  writeJson(response, 401, {
+    jsonrpc: "2.0",
+    error: {
+      code: -32001,
+      message: "Authentication required.",
+    },
+    id: null,
+  });
+}
+
+function serviceUnavailable(response: ServerResponse): void {
+  response.setHeader("Retry-After", "5");
+  writeJson(response, 503, {
+    jsonrpc: "2.0",
+    error: {
+      code: -32002,
+      message: "Personal OS is temporarily unavailable.",
+    },
+    id: null,
+  });
+}
+
+function resourceMetadataUrl(config: HttpServerConfig): string {
+  const url = new URL(config.publicUrl.toString());
+  url.pathname = "/.well-known/oauth-protected-resource/mcp";
+  return url.toString();
 }

@@ -97,13 +97,18 @@ PORT=8080 npm start
 
 The public MCP URL is `https://YOUR_PUBLIC_HOST/mcp`.
 
-For the requested development topology:
+Remote HTTP uses OAuth 2.1 authorization-code flow with PKCE. The MCP endpoint
+publishes Protected Resource Metadata, discovers Personal OS as its authorization
+server, and returns a standards-based `WWW-Authenticate` challenge. Each user is
+redirected to Personal OS login and a consent screen. Personal OS issues a
+resource-bound, one-hour access token and a rotating 30-day refresh token.
 
-```text
-ChatGPT → Railway personal-os-mcp → PERSONAL_OS_BASE_URL (ngrok) → local Personal OS
-```
+Every `POST /mcp` is validated through `/api/v1/ai/mcp-health` before a
+request-scoped MCP server is created. The service never falls back to a
+Railway-wide user token, accepts a User ID, exposes credentials, or logs them.
+Different authorized users therefore remain isolated.
 
-The Personal OS AI token stays only in the MCP service environment. It is never returned by `/health`, included in MCP errors, or written to logs. Because this stage intentionally adds no OAuth, anyone who can reach the public MCP URL can invoke the User-bound tools. Rotate or revoke the AI token when the endpoint is no longer needed.
+`PERSONAL_OS_AI_TOKEN` is only for local stdio clients.
 
 ### Railway
 
@@ -112,10 +117,11 @@ The repository includes a multi-stage `Dockerfile` and minimal `railway.json`. C
 ```env
 MCP_TRANSPORT=http
 PERSONAL_OS_BASE_URL=https://<your-personal-os-railway-domain>
-PERSONAL_OS_AI_TOKEN=your_secret_ai_token
 PERSONAL_OS_MCP_TIMEOUT_SECONDS=15
 ```
 
+MCP_PUBLIC_URL=https://<your-mcp-railway-domain>/mcp
+PERSONAL_OS_OAUTH_ISSUER_URL=https://<your-personal-os-railway-domain>
 `PERSONAL_OS_BASE_URL` should point at the deployed Personal OS web service's
 public URL once that app is also on Railway (see
 `personal-os/docs/deployment/railway.md` in that repo). For local-only
@@ -123,12 +129,11 @@ experimentation against a Personal OS instance that isn't deployed yet, an
 ngrok tunnel to your local Personal OS works the same way — any reachable
 HTTPS origin is accepted.
 
-`PERSONAL_OS_AI_TOKEN` is minted from the Personal OS app itself, not from
-this repo: `php artisan ai:token <email> --name=mcp` (see that app's
-`app/Console/Commands/CreateAiToken.php`). Treat it as a secret — it grants
-the bearer the `ai:access` ability scoped to that one Laravel user's data.
+Also set `MCP_AUTH_ISSUER_URL` and `MCP_RESOURCE_URL` on the Personal OS
+service to those same two public URLs. No user token belongs in the MCP Railway
+environment; OAuth creates and rotates user-scoped credentials after consent.
 
-Railway supplies `PORT`; do not hardcode it. The container's `Dockerfile` `CMD` runs `node dist/index.js` directly (with `MCP_TRANSPORT=http` baked in as an image default), and Railway checks `/healthz`. `railway.json` intentionally defines no `deploy.startCommand` — one that merely repeats the Dockerfile's own start behavior risks Railway bypassing the image's `CMD` entirely, which is exactly the failure mode to avoid. No database, persistent volume, OAuth service, or Personal OS deployment is required in this repo — only network access to wherever Personal OS is running.
+Railway supplies `PORT`; do not hardcode it. The container's `Dockerfile` `CMD` runs `node dist/index.js` directly and Railway checks `/healthz`. OAuth state is stored in the Personal OS database, so the MCP service remains stateless.
 
 Verify locally with `curl http://127.0.0.1:8080/healthz`. For MCP Inspector, run `npx @modelcontextprotocol/inspector`, select Streamable HTTP, and use `http://127.0.0.1:8080/mcp`.
 
@@ -166,6 +171,15 @@ Task tools also mirror the current Personal OS `work_state`, Feels Heavy support
 Effort remains part of the Personal OS API response/data contract, but its MCP create/update input option is temporarily hidden so the feature can be re-enabled later without a data migration.
 
 Paginated Task and unified-item list tools accept `page` and `per_page` (maximum 100). Normal requests return one page and add a concise `pagination` status indicating whether another page exists. Set `fetch_all: true` only when the user explicitly asks for every matching item. The MCP adapter then follows Laravel pagination metadata while preserving the original filters and ordering, stops after at most 10 pages, and reports `truncated: true` plus `next_page` when more results remain. The MCP-only `fetch_all` flag is never forwarded to Personal OS.
+
+### Reminders
+
+- `personal_os_list_task_reminders`
+- `personal_os_create_task_reminder`
+- `personal_os_update_reminder`
+- `personal_os_cancel_reminder`
+
+Reminder create/update values use `YYYY-MM-DD HH:mm` or `YYYY-MM-DD HH:mm:ss` in the Personal OS User timezone. Personal OS remains authoritative for future-time validation, daylight-saving transitions, ownership, Task eligibility, and lifecycle rules. Multiple reminders per Task are supported. Updating is limited to pending reminders; cancelling keeps history and is idempotent.
 
 ### Tags
 
@@ -259,6 +273,7 @@ Lifecycle meanings:
 
 - **Trash:** recoverable Task soft delete; `personal_os_restore_task` can recover it.
 - **Archive:** reversible removal from active views; the matching restore/unarchive action reactivates it.
+- **Reminder cancellation:** preserves reminder history and can safely be repeated, but a cancelled reminder is not restored.
 - **Final delete:** permanent and irreversible; applies to Containers, Projects, Collections, Tags, and Notes.
 
 The MCP protocol annotations inform compatible hosts, but the server does not create a custom Accept/Reject UI.
@@ -290,10 +305,8 @@ Unhandled errors inside an HTTP `/mcp` request handler (transport/protocol failu
 
 ## Known limitations
 
-- Streamable HTTP is stateless and intentionally has no OAuth or inbound authentication at this stage.
-- No OAuth or multi-user token selector.
-- No Reminders, Recurrences, or Checklist mutation tools.
+- No Recurrence or Checklist mutation tools.
 - No ChatGPT widget, custom frontend, or Accept/Reject UI.
 - Tool schemas are maintained as a typed projection of Laravel routes, Form Requests, enums, Resources, and capabilities because Personal OS currently publishes no OpenAPI document.
 
-Future stages may add the explicitly deferred domains, inbound authorization, and richer ChatGPT integration after their security and deployment decisions are approved.
+Future stages may add the explicitly deferred domains and richer ChatGPT UI integration.
