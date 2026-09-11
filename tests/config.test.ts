@@ -68,6 +68,18 @@ describe("configuration", () => {
     expect(config.authorizationServerUrl?.toString()).toBe("https://personal-os.example.test/");
   });
 
+  it("derives the MCP URL from Railway's public domain", () => {
+    const config = loadConfig({
+      MCP_TRANSPORT: "http",
+      RAILWAY_PUBLIC_DOMAIN: "personal-os-mcp.example.up.railway.app",
+      PERSONAL_OS_BASE_URL: "https://personal-os.example.test",
+    });
+
+    expect(config.publicUrl?.toString()).toBe(
+      "https://personal-os-mcp.example.up.railway.app/mcp",
+    );
+  });
+
   it.each(["sse", "HTTP"])("rejects invalid transport %s", (transport) => {
     expect(() =>
       loadConfig({

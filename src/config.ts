@@ -58,8 +58,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   let authorizationServerUrl: URL | undefined;
   let publicUrl: URL | undefined;
   if (parsedTransport.data === "http") {
+    const railwayPublicDomain = env.RAILWAY_PUBLIC_DOMAIN?.trim();
+    const rawPublicUrl =
+      env.MCP_PUBLIC_URL?.trim() || (railwayPublicDomain ? `https://${railwayPublicDomain}/mcp` : "");
     try {
-      publicUrl = new URL(env.MCP_PUBLIC_URL?.trim() || "");
+      publicUrl = new URL(rawPublicUrl);
     } catch {
       throw new ConfigurationError(
         "MCP_PUBLIC_URL is required in HTTP mode and must be a valid URL.",
